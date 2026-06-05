@@ -2,14 +2,25 @@ const SHEET_FORMATS = [
   { id: 'a5', label: 'A5', widthMm: 148, heightMm: 210 },
   { id: 'a4', label: 'A4', widthMm: 210, heightMm: 297 },
   { id: 'a3', label: 'A3', widthMm: 297, heightMm: 420 },
-  { id: 'letter', label: 'Letter', widthMm: 215.9, heightMm: 279.4 },
+  { id: 'letter', label: 'Carta', widthMm: 215.9, heightMm: 279.4 },
   { id: 'legal', label: 'Legal', widthMm: 215.9, heightMm: 355.6 },
   { id: 'tabloid', label: 'Tabloid', widthMm: 279.4, heightMm: 431.8 },
 ];
 
+const COLLAGE_LAYOUTS = [
+  { id: 'auto', label: 'Auto', hint: 'La app escoge la mejor cuadrícula.' },
+  { id: 'grid', label: 'Grid', hint: 'Celdas iguales para todas las imágenes.' },
+  { id: 'vertical', label: 'Vertical', hint: 'Una imagen encima de otra.' },
+  { id: 'horizontal', label: 'Horizontal', hint: 'Una imagen a la izquierda y otra a la derecha.' },
+  { id: 'hero', label: 'Destacada', hint: 'Una imagen grande con miniaturas alrededor.' },
+  { id: 'mosaic', label: 'Mosaico', hint: 'Formatos creativos tipo collage art.' },
+];
+
 const PT_PER_MM = 72 / 25.4;
+const PX_PER_MM = 4;
 const app = document.querySelector('#app');
 const state = {
+  mode: 'home',
   step: 1,
   source: null,
   projectName: 'Mi libro',
@@ -33,33 +44,70 @@ const state = {
     bottomMarginMm: 2,
     showGuides: true,
   },
+  collage: {
+    images: [],
+    projectName: 'Mi collage',
+    sheet: SHEET_FORMATS.find((sheet) => sheet.id === 'letter'),
+    orientation: 'portrait',
+    layout: 'auto',
+    fit: 'cover',
+    background: '#fffaf0',
+    borderColor: '#1f1b17',
+    marginMm: 10,
+    gapMm: 4,
+    borderMm: 0.8,
+    radiusMm: 1,
+    generatedUrl: null,
+    generatedName: 'collage.png',
+  },
 };
 
 render();
 
 function render() {
-  const blueprint = state.source ? tryBlueprint() : null;
+  const isBooklet = state.mode === 'booklet';
+  const isCollage = state.mode === 'collage';
+  const blueprint = isBooklet && state.source ? tryBlueprint() : null;
   app.className = state.dark ? 'app dark' : 'app';
   app.innerHTML = `
     <header class="topbar">
-      <div><p class="eyebrow">Book</p><h1>Booklet</h1></div>
+      <div class="brand">
+        <img class="app-icon" src="https://static.thenounproject.com/png/100734-200.png" alt="" />
+        <div><p class="eyebrow">Publica tu propio libro en casa</p><h1>${isCollage ? 'Collage' : isBooklet ? 'Booklet' : 'Book'}</h1></div>
+      </div>
       <div class="top-actions">
+        ${state.mode !== 'home' ? `<button class="icon-button wide" data-action="home" aria-label="Inicio">Inicio</button>` : ''}
         <button class="icon-button" data-action="theme" aria-label="Cambiar tema">${state.dark ? '☀️' : '☾'}</button>
-        ${state.source ? `<span class="pill">▣ ${state.source.pageCount} páginas</span>` : ''}
+        ${isBooklet && state.source ? `<span class="pill">▣ ${state.source.pageCount} páginas</span>` : ''}
+        ${isCollage && state.collage.images.length ? `<span class="pill">▧ ${state.collage.images.length} imágenes</span>` : ''}
       </div>
     </header>
-    ${stepper()}
-    <section class="content">
+    ${isBooklet ? stepper() : ''}
+    <section class="content ${isCollage ? 'wide-content' : ''}">
       ${state.error ? `<div class="alert error">${escapeHtml(state.error)}</div>` : ''}
-      ${state.step === 1 ? importStep() : ''}
-      ${state.step === 2 && state.source ? setupStep() : ''}
-      ${state.step === 3 ? sheetStep() : ''}
-      ${state.step === 4 && state.source && blueprint ? reviewStep(blueprint) : ''}
+      ${state.mode === 'home' ? homeStep() : ''}
+      ${isBooklet && state.step === 1 ? importStep() : ''}
+      ${isBooklet && state.step === 2 && state.source ? setupStep() : ''}
+      ${isBooklet && state.step === 3 ? sheetStep() : ''}
+      ${isBooklet && state.step === 4 && state.source && blueprint ? reviewStep(blueprint) : ''}
+      ${isCollage ? collageStep() : ''}
     </section>
     ${state.progress ? progressOverlay() : ''}
-    ${bottomNav(Boolean(blueprint))}
+    ${isBooklet ? bottomNav(Boolean(blueprint)) : ''}
   `;
   bindEvents();
+}
+
+function homeStep() {
+  return `<div class="screen intro hero-screen">
+    <h2>Creatividad para leer, imprimir y compartir</h2>
+    <p>Elige si quieres convertir un PDF en cuadernillo a doble cara o crear una hoja de collage grid art con múltiples imágenes, lista para guardar e imprimir en casa.</p>
+    <div class="import-grid">
+      <button class="import-card primary-card" data-action="start-booklet"><span>📖</span><strong>Crear libro PDF</strong><small>Mantiene el flujo actual para impresión dúplex.</small></button>
+      <button class="import-card muted-card" data-action="start-collage"><span>▧</span><strong>Imágenes / Collage</strong><small>Sube fotos, elige formato carta y previsualiza diseños.</small></button>
+    </div>
+    <div class="tip">💡 Publica tu propio libro en casa: combina lectura, papel cálido, blanco, negro y naranja tenue con herramientas sencillas.</div>
+  </div>`;
 }
 
 function stepper() {
@@ -75,9 +123,9 @@ function importStep() {
     <h2>Comienza tu proyecto de libro</h2>
     <p>Importa un PDF y Book generará un nuevo archivo donde cada cara de la hoja contiene dos páginas correctamente ordenadas para imprimir a doble cara, doblar por la mitad y leer de inicio a fin.</p>
     <input id="pdf-input" class="hidden" type="file" accept="application/pdf,.pdf" />
-    <div class="import-grid">
+    <div class="import-grid single-row">
       <button class="import-card primary-card" data-action="pick-pdf">▣ Importar PDF</button>
-      <button class="import-card muted-card" disabled title="Próximamente">▧ Imágenes próximamente</button>
+      <button class="import-card muted-card" data-action="start-collage">▧ Imágenes / Collage</button>
     </div>
     <div class="tip">💡 Carga un documento PDF. La app analizará sus páginas y calculará el orden correcto del cuadernillo.</div>
     ${state.source ? `<div class="file-chip">▣ ${escapeHtml(state.source.file.name)}</div>` : ''}
@@ -128,6 +176,66 @@ function reviewStep(blueprint) {
   </div>`;
 }
 
+function collageStep() {
+  const c = state.collage;
+  const sheet = getCollageSheetSize();
+  const layouts = COLLAGE_LAYOUTS.map((layout) => `<button data-collage-setting="layout" data-value="${layout.id}" class="layout-chip ${c.layout === layout.id ? 'selected' : ''}"><strong>${layout.label}</strong><small>${layout.hint}</small></button>`).join('');
+  return `<div class="screen collage-screen">
+    <input id="image-input" class="hidden" type="file" accept="image/*" multiple />
+    <div class="collage-head">
+      <div>
+        <h2>Collage grid art</h2>
+        <p>Crea formatos tipo collage en una hoja definida. Sube varias imágenes, cambia distribución, margen, borde y exporta la composición para imprimir.</p>
+      </div>
+      <button class="primary" data-action="pick-images">+ Subir imágenes</button>
+    </div>
+    <div class="collage-workspace">
+      <aside class="panel controls-panel">
+        ${field('Nombre del collage', `<input data-collage-setting="projectName" value="${escapeAttr(c.projectName)}" />`)}
+        ${field('Tamaño de hoja', `<select data-collage-setting="sheet">${SHEET_FORMATS.map((format) => `<option value="${format.id}" ${c.sheet.id === format.id ? 'selected' : ''}>${format.label} · ${format.widthMm} × ${format.heightMm} mm</option>`).join('')}</select>`)}
+        ${segment('Orientación', 'collage:orientation', [['portrait', 'Vertical'], ['landscape', 'Horizontal']], c.orientation)}
+        ${segment('Ajuste de imagen', 'collage:fit', [['cover', 'Cubrir'], ['contain', 'Contener']], c.fit)}
+        <div class="layout-list"><strong>Diseño según cantidad</strong>${layouts}</div>
+        <div class="control-row"><label>Fondo <input type="color" data-collage-setting="background" value="${escapeAttr(c.background)}" /></label><label>Borde <input type="color" data-collage-setting="borderColor" value="${escapeAttr(c.borderColor)}" /></label></div>
+        ${numberFieldCollage('Margen de hoja (mm)', 'marginMm', c.marginMm)}
+        ${numberFieldCollage('Separación (mm)', 'gapMm', c.gapMm)}
+        ${numberFieldCollage('Grosor de borde (mm)', 'borderMm', c.borderMm)}
+        <button class="primary full" data-action="export-collage" ${c.images.length ? '' : 'disabled'}>Guardar collage</button>
+        ${c.generatedUrl ? `<a class="download compact" href="${c.generatedUrl}" download="${escapeAttr(c.generatedName)}">⬇ Descargar imagen</a>` : ''}
+      </aside>
+      <section class="preview-panel">
+        ${collagePreview(sheet)}
+        ${thumbnailStrip()}
+      </section>
+    </div>
+  </div>`;
+}
+
+function collagePreview(sheet) {
+  const c = state.collage;
+  const slots = buildCollageSlots(c.images.length, sheet.width, sheet.height, c);
+  return `<div class="paper-shell">
+    <div class="paper-meta"><strong>${c.sheet.label} ${c.orientation === 'landscape' ? 'horizontal' : 'vertical'}</strong><span>${c.images.length || 0} imágenes · ${selectedLayoutLabel()}</span></div>
+    <div class="paper-preview" style="--paper-w:${sheet.width}; --paper-h:${sheet.height}; background:${escapeAttr(c.background)};">
+      ${c.images.length ? slots.map((slot, index) => collageSlot(slot, c.images[index], index)).join('') : `<div class="empty-collage"><strong>Sube imágenes para comenzar</strong><span>Verás aquí la previsualización en tamaño de hoja.</span></div>`}
+    </div>
+  </div>`;
+}
+
+function collageSlot(slot, image, index) {
+  const c = state.collage;
+  return `<div class="collage-slot" style="left:${slot.x}%;top:${slot.y}%;width:${slot.width}%;height:${slot.height}%;border-color:${escapeAttr(c.borderColor)};border-width:${Math.max(1, c.borderMm * 2)}px;border-radius:${c.radiusMm * 3}px;">
+    <img src="${image.url}" alt="Imagen ${index + 1}" style="object-fit:${c.fit};" />
+    <span>${index + 1}</span>
+  </div>`;
+}
+
+function thumbnailStrip() {
+  const images = state.collage.images;
+  if (!images.length) return `<div class="tip">📷 Selecciona de 1 a 100 imágenes para crear cuadrículas, filas, columnas o mosaicos.</div>`;
+  return `<div class="thumb-strip">${images.map((image, index) => `<article class="thumb"><img src="${image.url}" alt="${escapeAttr(image.name)}" /><button data-action="remove-image" data-index="${index}" aria-label="Quitar ${escapeAttr(image.name)}">×</button><small>${index + 1}</small></article>`).join('')}</div>`;
+}
+
 function bottomNav(hasBlueprint) {
   const canNext = state.step === 1 ? Boolean(state.source) : state.step === 3 ? hasBlueprint : true;
   return `<nav class="bottom-nav">
@@ -138,13 +246,22 @@ function bottomNav(hasBlueprint) {
 
 function bindEvents() {
   document.querySelector('[data-action="theme"]')?.addEventListener('click', () => { state.dark = !state.dark; render(); });
+  document.querySelector('[data-action="home"]')?.addEventListener('click', () => { state.mode = 'home'; state.error = ''; render(); });
+  document.querySelectorAll('[data-action="start-booklet"]').forEach((button) => button.addEventListener('click', () => { state.mode = 'booklet'; state.step = 1; state.error = ''; render(); }));
+  document.querySelectorAll('[data-action="start-collage"]').forEach((button) => button.addEventListener('click', () => { state.mode = 'collage'; state.error = ''; render(); }));
   document.querySelector('[data-action="pick-pdf"]')?.addEventListener('click', () => document.querySelector('#pdf-input')?.click());
   document.querySelector('#pdf-input')?.addEventListener('change', importPdf);
+  document.querySelector('[data-action="pick-images"]')?.addEventListener('click', () => document.querySelector('#image-input')?.click());
+  document.querySelector('#image-input')?.addEventListener('change', importImages);
   document.querySelector('[data-action="back"]')?.addEventListener('click', () => { state.step = Math.max(1, state.step - 1); render(); });
   document.querySelector('[data-action="next"]')?.addEventListener('click', () => { state.step = Math.min(4, state.step + 1); render(); });
   document.querySelectorAll('[data-action="generate"]').forEach((button) => button.addEventListener('click', generateBooklet));
-  document.querySelectorAll('[data-segment]').forEach((button) => button.addEventListener('click', () => updateSetting(button.dataset.segment, button.dataset.value)));
+  document.querySelector('[data-action="export-collage"]')?.addEventListener('click', exportCollage);
+  document.querySelectorAll('[data-action="remove-image"]').forEach((button) => button.addEventListener('click', () => removeCollageImage(Number(button.dataset.index))));
+  document.querySelectorAll('[data-segment]').forEach((button) => button.addEventListener('click', () => updateSegment(button.dataset.segment, button.dataset.value)));
   document.querySelectorAll('[data-setting]').forEach((input) => input.addEventListener('input', () => updateInput(input)));
+  document.querySelectorAll('[data-collage-setting]').forEach((input) => input.addEventListener('input', () => updateCollageInput(input)));
+  document.querySelectorAll('button[data-collage-setting]').forEach((button) => button.addEventListener('click', () => updateCollageValue(button.dataset.collageSetting, button.dataset.value)));
 }
 
 async function importPdf(event) {
@@ -161,6 +278,21 @@ async function importPdf(event) {
   } catch (error) {
     setError(error.message || 'No se pudo abrir el PDF.');
   }
+  render();
+}
+
+function importImages(event) {
+  const files = [...(event.target.files || [])].filter((file) => file.type.startsWith('image/')).slice(0, 100 - state.collage.images.length);
+  if (!files.length) return;
+  setError('');
+  state.collage.images.push(...files.map((file) => ({ file, name: file.name, url: URL.createObjectURL(file) })));
+  if (state.collage.projectName === 'Mi collage' && files[0]) state.collage.projectName = files[0].name.replace(/\.[^.]+$/, '');
+  render();
+}
+
+function removeCollageImage(index) {
+  const [image] = state.collage.images.splice(index, 1);
+  if (image) URL.revokeObjectURL(image.url);
   render();
 }
 
@@ -224,6 +356,41 @@ async function generateBooklet() {
   }
 }
 
+async function exportCollage() {
+  if (!state.collage.images.length) return;
+  try {
+    setProgress('Preparando collage', 15);
+    const c = state.collage;
+    const sheet = getCollageSheetSize();
+    const scale = 3;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(sheet.width * scale);
+    canvas.height = Math.round(sheet.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = c.background;
+    ctx.fillRect(0, 0, sheet.width, sheet.height);
+    const slots = buildCollageSlots(c.images.length, sheet.width, sheet.height, c, false);
+    const loaded = await Promise.all(c.images.map((image) => loadImage(image.url)));
+    loaded.forEach((image, index) => {
+      const slot = slots[index];
+      drawCollageImage(ctx, image, slot, c);
+      setProgress('Dibujando imágenes', Math.round(20 + ((index + 1) / loaded.length) * 70));
+    });
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.95));
+    if (!blob) throw new Error('No se pudo exportar el canvas.');
+    if (c.generatedUrl) URL.revokeObjectURL(c.generatedUrl);
+    c.generatedUrl = URL.createObjectURL(blob);
+    c.generatedName = `${safeFileName(c.projectName)}-collage.png`;
+    setProgress('Collage guardado', 100);
+    setTimeout(() => { state.progress = null; render(); }, 450);
+  } catch (error) {
+    state.progress = null;
+    setError(error.message || 'No se pudo guardar el collage.');
+    render();
+  }
+}
+
 async function loadPdfLib() {
   if (!state.pdfLib) state.pdfLib = await import('https://esm.sh/pdf-lib@1.17.1');
   return state.pdfLib;
@@ -269,6 +436,113 @@ function buildBlueprint(pageCount, settings) {
   };
 }
 
+function buildCollageSlots(count, sheetWidth, sheetHeight, settings, asPercent = true) {
+  if (!count) return [];
+  const margin = settings.marginMm * PX_PER_MM;
+  const gap = settings.gapMm * PX_PER_MM;
+  const width = sheetWidth - margin * 2;
+  const height = sheetHeight - margin * 2;
+  const layout = settings.layout === 'auto' ? autoLayout(count) : settings.layout;
+  let slots;
+  if (layout === 'horizontal' && count <= 4) slots = rowSlots(count, margin, margin, width, height, gap);
+  else if (layout === 'vertical' && count <= 4) slots = columnSlots(count, margin, margin, width, height, gap);
+  else if (layout === 'hero' && count > 1) slots = heroSlots(count, margin, margin, width, height, gap);
+  else if (layout === 'mosaic' && count >= 3) slots = mosaicSlots(count, margin, margin, width, height, gap);
+  else slots = gridSlots(count, margin, margin, width, height, gap);
+  return asPercent ? slots.map((slot) => ({ x: (slot.x / sheetWidth) * 100, y: (slot.y / sheetHeight) * 100, width: (slot.width / sheetWidth) * 100, height: (slot.height / sheetHeight) * 100 })) : slots;
+}
+
+function autoLayout(count) {
+  if (count === 2) return 'vertical';
+  if (count === 3 || count === 5) return 'hero';
+  if (count >= 6) return 'mosaic';
+  return 'grid';
+}
+
+function gridSlots(count, x, y, width, height, gap) {
+  const columns = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / columns);
+  const cellWidth = (width - gap * (columns - 1)) / columns;
+  const cellHeight = (height - gap * (rows - 1)) / rows;
+  return Array.from({ length: count }, (_, index) => ({ x: x + (index % columns) * (cellWidth + gap), y: y + Math.floor(index / columns) * (cellHeight + gap), width: cellWidth, height: cellHeight }));
+}
+
+function rowSlots(count, x, y, width, height, gap) {
+  const cellWidth = (width - gap * (count - 1)) / count;
+  return Array.from({ length: count }, (_, index) => ({ x: x + index * (cellWidth + gap), y, width: cellWidth, height }));
+}
+
+function columnSlots(count, x, y, width, height, gap) {
+  const cellHeight = (height - gap * (count - 1)) / count;
+  return Array.from({ length: count }, (_, index) => ({ x, y: y + index * (cellHeight + gap), width, height: cellHeight }));
+}
+
+function heroSlots(count, x, y, width, height, gap) {
+  const heroHeight = count <= 3 ? height * 0.62 : height * 0.58;
+  const slots = [{ x, y, width, height: heroHeight }];
+  const rest = gridSlots(count - 1, x, y + heroHeight + gap, width, height - heroHeight - gap, gap);
+  return slots.concat(rest);
+}
+
+function mosaicSlots(count, x, y, width, height, gap) {
+  if (count < 3) return gridSlots(count, x, y, width, height, gap);
+  const slots = [];
+  const topHeight = height * 0.27;
+  const sideWidth = width * 0.19;
+  slots.push(...rowSlots(Math.min(2, count), x, y, width, topHeight, gap));
+  if (count <= 2) return slots;
+  slots.push({ x, y: y + topHeight + gap, width: sideWidth, height: height - topHeight - gap });
+  if (count <= 3) return slots;
+  slots.push({ x: x + sideWidth + gap, y: y + topHeight + gap, width: width - sideWidth - gap, height: height - topHeight - gap });
+  if (count <= 4) return slots;
+  const bottomHeight = height * 0.15;
+  slots[3].height -= bottomHeight + gap;
+  slots.push(...rowSlots(count - 4, x + sideWidth + gap, y + height - bottomHeight, width - sideWidth - gap, bottomHeight, gap));
+  return slots.slice(0, count);
+}
+
+function drawCollageImage(ctx, image, slot, settings) {
+  const border = settings.borderMm * PX_PER_MM;
+  const radius = settings.radiusMm * PX_PER_MM;
+  roundedRect(ctx, slot.x, slot.y, slot.width, slot.height, radius);
+  ctx.save();
+  ctx.clip();
+  const scale = getScale(image.naturalWidth, image.naturalHeight, slot.width, slot.height, settings.fit);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  ctx.drawImage(image, slot.x + (slot.width - width) / 2, slot.y + (slot.height - height) / 2, width, height);
+  ctx.restore();
+  if (border > 0) {
+    ctx.strokeStyle = settings.borderColor;
+    ctx.lineWidth = border;
+    roundedRect(ctx, slot.x + border / 2, slot.y + border / 2, slot.width - border, slot.height - border, Math.max(0, radius - border / 2));
+    ctx.stroke();
+  }
+}
+
+function roundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('No se pudo cargar una imagen del collage.'));
+    image.src = src;
+  });
+}
+
 function parsePageRange(range, pageCount) {
   if (!range.trim()) return Array.from({ length: pageCount }, (_, index) => index + 1);
   const selected = new Set();
@@ -297,13 +571,30 @@ function getScale(sourceWidth, sourceHeight, maxWidth, maxHeight, fit) {
   return fit === 'cover' ? Math.max(maxWidth / sourceWidth, maxHeight / sourceHeight) : Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
 }
 
+function getCollageSheetSize() {
+  const c = state.collage;
+  const widthMm = c.orientation === 'landscape' ? Math.max(c.sheet.widthMm, c.sheet.heightMm) : Math.min(c.sheet.widthMm, c.sheet.heightMm);
+  const heightMm = c.orientation === 'landscape' ? Math.min(c.sheet.widthMm, c.sheet.heightMm) : Math.max(c.sheet.widthMm, c.sheet.heightMm);
+  return { width: widthMm * PX_PER_MM, height: heightMm * PX_PER_MM };
+}
+
+function selectedLayoutLabel() {
+  const id = state.collage.layout === 'auto' ? autoLayout(state.collage.images.length) : state.collage.layout;
+  return COLLAGE_LAYOUTS.find((layout) => layout.id === id)?.label || 'Grid';
+}
+
 function field(label, control) { return `<label class="field"><span>${label}</span>${control}</label>`; }
 function numberField(label, key, value) { return field(label, `<input type="number" min="0" step="0.5" data-setting="${key}" value="${value}" />`); }
+function numberFieldCollage(label, key, value) { return field(label, `<input type="number" min="0" step="0.5" data-collage-setting="${key}" value="${value}" />`); }
 function switchRow(title, help, key, checked) { return `<label class="switch-row"><span><strong>${title}</strong><small>${help}</small></span><input type="checkbox" data-setting="${key}" ${checked ? 'checked' : ''} /></label>`; }
 function segment(title, key, options, value) { return `<div class="segment-block"><strong>${title}</strong><div class="segment">${options.map(([optionValue, label]) => `<button data-segment="${key}" data-value="${optionValue}" class="${value === optionValue ? 'selected' : ''}">${value === optionValue ? '✓ ' : ''}${label}</button>`).join('')}</div></div>`; }
 function stat(label, value) { return `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`; }
 function sheetCard(sheet) { const f = (slot) => slot ? `P${slot}` : 'Blanco'; return `<article class="sheet-card"><strong>Signatura ${sheet.signature} · Hoja ${sheet.sheet}</strong><span>Frente: ${f(sheet.front[0])} | ${f(sheet.front[1])}</span><span>Vuelta: ${f(sheet.back[0])} | ${f(sheet.back[1])}</span></article>`; }
-function progressOverlay() { const p = state.progress; const s = state.settings; return `<div class="overlay"><div class="progress-card"><div class="badge">📖</div><h2>Creando PDF de libro</h2><p>Las páginas se están colocando en signaturas y empaquetando para impresión.</p><div class="meter-row"><strong>${p.message}</strong><span>${p.percent}%</span></div><div class="meter"><span style="width:${p.percent}%"></span></div><div class="mini-stats">${stat('Origen', 'PDF')}${stat('Páginas', state.source?.pageCount ?? 0)}${stat('Hoja', s.sheet.label)}${stat('Signatura', s.signaturePages === 'single' ? 'Única' : s.signaturePages)}</div></div></div>`; }
+function progressOverlay() { const p = state.progress; return `<div class="overlay"><div class="progress-card"><div class="badge">${state.mode === 'collage' ? '▧' : '📖'}</div><h2>${state.mode === 'collage' ? 'Creando collage' : 'Creando PDF de libro'}</h2><p>${state.mode === 'collage' ? 'Las imágenes se están acomodando en la hoja seleccionada.' : 'Las páginas se están colocando en signaturas y empaquetando para impresión.'}</p><div class="meter-row"><strong>${p.message}</strong><span>${p.percent}%</span></div><div class="meter"><span style="width:${p.percent}%"></span></div></div></div>`; }
+function updateSegment(key, value) {
+  if (key.startsWith('collage:')) updateCollageValue(key.split(':')[1], value);
+  else updateSetting(key, value);
+}
 function updateSetting(key, value) { state.settings[key] = value; render(); }
 function updateInput(input) {
   const key = input.dataset.setting;
@@ -314,7 +605,17 @@ function updateInput(input) {
   else if (input.type === 'number') state.settings[key] = Math.max(0, Number(input.value));
   else state.settings[key] = input.value;
 }
-function tryBlueprint() { try { return buildBlueprint(state.source.pageCount, state.settings); } catch (error) { state.error = error.message; return null; } }
+function updateCollageInput(input) {
+  const key = input.dataset.collageSetting;
+  const value = input.type === 'number' ? Math.max(0, Number(input.value)) : input.value;
+  updateCollageValue(key, value);
+}
+function updateCollageValue(key, value) {
+  if (key === 'sheet') state.collage.sheet = SHEET_FORMATS.find((sheet) => sheet.id === value) || state.collage.sheet;
+  else state.collage[key] = value;
+  render();
+}
+function tryBlueprint() { try { state.error = ''; return buildBlueprint(state.source.pageCount, state.settings); } catch (error) { state.error = error.message; return null; } }
 function setProgress(message, percent) { state.progress = { message, percent }; render(); }
 function setError(message) { state.error = message; }
 function mmToPt(value) { return value * PT_PER_MM; }
